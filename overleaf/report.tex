@@ -101,14 +101,20 @@ Fig.~\ref{fig:teaser} gives the flavour at a glance.
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig1_teaser.pdf}
-\caption{\textbf{Top:} phantom boxes that Qwen2.5-VL and LLaVA-NeXT
-drew around objects that are \emph{not} in the image.
-\textbf{Bottom:} boxes the same two models drew for objects that
-\emph{are} in the image. The eye already distinguishes phantoms
-(smaller, off-centre) from honest boxes (larger, naturally
-distributed).}
+\caption{Phantom boxes (top, objects absent) vs.\ honest boxes
+(bottom, objects present) from Qwen2.5-VL and LLaVA-NeXT on POPE.}
 \label{fig:teaser}
 \end{figure}
+
+\begin{figure*}[!tb]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/fig2_method.pdf}
+\caption{PhantomMap pipeline. Each $(I, o)$ probe produces a yes/no
+answer plus -- on ``yes'' -- a bbox. When POPE labels $o$ absent,
+every ``yes'' is a phantom event whose bbox feeds the atlas and the
+detector.}
+\label{fig:method}
+\end{figure*}
 
 %%%%%%%%% RELATED WORK
 \section{Related Work}
@@ -131,12 +137,19 @@ for another.
 \paragraph{Feature-based detection.} HALP \cite{halp} trains a
 classifier on the VLM's internal visual features and reaches
 $\mathrm{AUROC}=0.787$ on Qwen2.5-VL, the strongest published Qwen
-baseline we know of. DASH \cite{dash} clusters \emph{images} that
-systematically trigger hallucinations. Visual CounterFact
-\cite{pixelsvspriors} studies the pixel-vs-prior conflict. Unlike all
-these, PhantomMap operates on the VLM's \emph{prompted bbox output} --
-the channel actually exposed to a user -- and is the first to profile
-the \emph{spatial distribution} of hallucinated objects.
+baseline we are aware of. DASH \cite{dash} clusters \emph{images}
+that systematically trigger hallucinations, complementing our
+token-level view with an image-level one. Visual CounterFact
+\cite{pixelsvspriors} studies the pixel-vs-prior conflict when the
+image contradicts world knowledge.
+
+Unlike all of the above, PhantomMap operates on the VLM's
+\emph{prompted bbox output} -- the channel actually exposed to a
+user via the public API -- and is the first to profile the
+\emph{spatial distribution} of hallucinated objects in pixel space.
+This makes the approach cheap (no model internals, no external
+detectors) and portable (any grounded VLM with an API supports it
+out of the box).
 
 %%%%%%%%% METHOD
 \section{Method}
@@ -149,23 +162,16 @@ examples, no chain-of-thought. Outputs are parsed tolerantly
 (markdown fences, list-of-dict variants, LLaVA's normalised $[0,1]$
 coordinates; \S\ref{sec:exp}) and clipped to $[0,W]\times[0,H]$ with
 minimum side $4$ px. Every generated token's greedy log-probability is
-logged.
-
-\begin{figure*}[!tb]
-\centering
-\includegraphics[width=0.95\textwidth]{figures/fig2_method.pdf}
-\caption{PhantomMap pipeline. For each $(I, o)$ pair in POPE, the VLM
-is prompted for yes/no plus a bbox. When POPE labels the object
-absent, every ``yes'' is a phantom event and its bbox feeds both the
-atlas (\S\ref{sec:atlas}) and the detector (\S\ref{sec:detector}).}
-\label{fig:method}
-\end{figure*}
+logged. The same prompt is used verbatim across both models; no
+model-specific tuning is applied.
 
 \paragraph{Events.} A \emph{phantom event} is $(I, o, b)$ where POPE
 labels $o$ absent, the VLM says yes, and emits a valid bbox $b$. An
 \emph{honest event} is the analogue with POPE label ``yes''; honest
 events form the natural distribution against which phantoms are
-compared.
+compared. Because POPE's ground truth is derived from COCO object
+annotations, the ``no'' label is reliable for the categories
+(80 COCO classes) the benchmark probes.
 
 \paragraph{Spatial atlas.} \label{sec:atlas}
 Each bbox is normalised to $[0,1]^2$. We fit a 2D Gaussian KDE
@@ -214,10 +220,8 @@ LLaVA-NeXT-7B & pop. & 3000 & 0.898 & 0.070 & 0.468 & 18.9 \\
 LLaVA-NeXT-7B & rnd. & 3000 & 0.918 & 0.029 & 0.448 & 19.1 \\
 \bottomrule
 \end{tabular}
-\caption{POPE accuracy, hallucination rate, yes rate, and the
-fraction of ``yes'' answers that yielded a parseable bbox. Qwen is
-more willing to ground and more willing to hallucinate; LLaVA is the
-opposite.}
+\caption{POPE accuracy, hallucination rate, yes rate, and valid-bbox
+fraction on ``yes'' answers, per model per split.}
 \label{tab:rates}
 \end{table*}
 
@@ -232,10 +236,8 @@ artefact of one model's grounding supervision.
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig3_atlas.pdf}
-\caption{\textbf{Phantom atlas.} KDE of phantom-box centres vs
-honest-box centres, per model. Phantom boxes are displaced
-\emph{outward} relative to the honest distribution for both models.
-Colour = density; white dots = individual events.}
+\caption{Phantom vs.\ honest box-centre density, per model. Phantom
+boxes sit noticeably further from the image centre.}
 \label{fig:atlas}
 \end{figure}
 
@@ -259,17 +261,16 @@ LLaVA-NeXT-7B  & phantom &   71 & 0.304 & 0.189 \\
 LLaVA-NeXT-7B  & honest  &  741 & 0.231 & 0.239 \\
 \bottomrule
 \end{tabular}
-\caption{Atlas summary. Phantoms are further from the image centre
-and smaller in area than honest boxes, for both models.}
+\caption{Atlas summary. Phantoms are further from centre and smaller
+than honest boxes for both models.}
 \label{tab:atlas}
 \end{table}
 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig4_roc.pdf}
-\caption{\textbf{Detector ROC.} Training-free logistic regression on
-phantom-box features (solid) vs.\ a logit-only baseline (dashed) vs.\
-chance. Axes are false-positive and true-positive rates.}
+\caption{Detector ROC. LR on phantom-box features (solid) vs.\ a
+logit-only baseline (dashed) vs.\ chance.}
 \label{fig:roc}
 \end{figure}
 
@@ -285,10 +286,9 @@ Logit only                   & 0.899 & 0.889 \\
 LR full (ours)               & \textbf{0.916} & \textbf{0.873} \\
 \bottomrule
 \end{tabular}
-\caption{Hallucination-detection AUROC on stratified $70/30$ splits
-over ``yes'' events that yielded a valid bbox ($n{=}6{,}965$ Qwen;
-$n{=}812$ LLaVA). Our first-party detector exceeds HALP's
-internal-feature detector on Qwen by $+12.8$ AUROC points.}
+\caption{Detection AUROC on stratified $70/30$ splits
+($n{=}6{,}965$ Qwen; $n{=}812$ LLaVA). Our first-party detector
+beats HALP's internal-feature detector on Qwen by $+12.8$ points.}
 \label{tab:detector}
 \end{table}
 
@@ -296,20 +296,32 @@ internal-feature detector on Qwen by $+12.8$ AUROC points.}
 ($100\%$) while LLaVA grounds on only $19\%$, so LLaVA's yes-token
 logprob already captures most of the separating signal and geometry
 adds little. Qualitatively, phantoms cluster into three patterns
-(Fig.~\ref{fig:failures}): oversized hedge boxes that half-cover the
-scene; peripheral boxes pressed to a corner; and edge-clipped boxes
-flush with an image border.
+(Fig.~\ref{fig:failures}): \emph{oversized hedge boxes} that
+half-cover the scene (typical for categories that rarely appear at
+small scale in COCO, e.g.\ ``stop sign'', ``surfboard''),
+\emph{peripheral boxes} pressed to a corner or edge of the image
+(common for small-scale categories the model is less confident
+about, e.g.\ ``scissors'', ``toilet''), and \emph{edge-clipped
+boxes} whose boundary is flush with an image border (frequently
+hallucinated on cluttered urban or kitchen scenes).
+False negatives (phantoms missed by the detector) are dominated by
+high-frequency COCO classes such as ``person'', ``chair'', and
+``dining table'', for which the model emits plausibly sized and
+centred boxes that blend in with honest examples. False positives
+come from honest ``yes'' answers with small, off-centre objects
+(truncations or crops) that coincidentally look phantom-like. This
+indicates the atlas signal we exploit is informative but not a
+single magic knob: the detector learns a multi-dimensional
+decision boundary rather than a simple threshold on size or
+position.
 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig5_failures.pdf}
-\caption{\textbf{Failure-mode taxonomy.} Top: phantoms covering most
-of the image. Middle: phantoms pressed against the periphery. Bottom:
-phantoms flush with an image border.}
+\caption{Three phantom failure modes: oversized (top), off-centre
+(middle), edge-clipped (bottom).}
 \label{fig:failures}
 \end{figure}
-
-\FloatBarrier
 
 %%%%%%%%% CONCLUSION
 \section{Conclusion}
