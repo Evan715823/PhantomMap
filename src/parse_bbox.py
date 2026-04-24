@@ -158,10 +158,21 @@ def validate_bbox(
     """Return the bbox clipped to image bounds if it is sane, else None.
 
     A bbox is sane when: 0 <= x1 < x2 <= W, 0 <= y1 < y2 <= H, and both
-    sides are at least min_side pixels. We clip to image bounds first
-    (Qwen occasionally overshoots by 1-2 px).
+    sides are at least min_side pixels.
+
+    Heuristic: if all four coordinates are in [0, 1.01], we assume the
+    model emitted them in normalised [0,1] coordinates (LLaVA-NeXT
+    behaves this way on grounded prompts) and scale them to pixels
+    before clipping. Qwen2.5-VL always uses pixel coordinates, so
+    this branch is a no-op for it.
     """
     x1, y1, x2, y2 = bbox
+    max_coord = max(abs(x1), abs(y1), abs(x2), abs(y2))
+    if max_coord <= 1.01:
+        x1 = x1 * img_w
+        y1 = y1 * img_h
+        x2 = x2 * img_w
+        y2 = y2 * img_h
     # Some models emit (y1, x1, y2, x2). We detect and correct only the
     # obvious case where x > W but y <= H and swapping makes it sane.
     if x1 > img_w and y1 <= img_h and x2 > img_w and y2 <= img_h:

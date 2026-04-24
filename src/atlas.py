@@ -33,16 +33,32 @@ MODEL_SHORT = {
 
 
 def kde_grid(cx: np.ndarray, cy: np.ndarray, n: int = 200) -> np.ndarray:
-    """Evaluate a 2D Gaussian KDE on the unit square."""
+    """Evaluate a 2D Gaussian KDE on the unit square.
+
+    Falls back to a smoothed 2D histogram when the data is rank-deficient
+    (VLMs often emit quantised bbox coordinates that land in a near-singular
+    covariance). Adds a tiny isotropic noise to break symmetry so KDE
+    succeeds on borderline cases.
+    """
     if len(cx) < 3:
         return np.zeros((n, n), dtype=np.float32)
-    pts = np.stack([cx, cy])
-    kde = gaussian_kde(pts, bw_method=0.15)
+    rng = np.random.default_rng(0)
+    jitter = 1e-3
+    cx_j = cx + rng.normal(0, jitter, size=cx.shape)
+    cy_j = cy + rng.normal(0, jitter, size=cy.shape)
+    pts = np.stack([cx_j, cy_j])
     xs = np.linspace(0, 1, n)
     ys = np.linspace(0, 1, n)
     X, Y = np.meshgrid(xs, ys)
     grid_pts = np.stack([X.ravel(), Y.ravel()])
-    Z = kde(grid_pts).reshape(n, n)
+    try:
+        kde = gaussian_kde(pts, bw_method=0.15)
+        Z = kde(grid_pts).reshape(n, n)
+    except np.linalg.LinAlgError:
+        # Fallback: 2D histogram smoothed with a tight Gaussian.
+        from scipy.ndimage import gaussian_filter
+        H, _, _ = np.histogram2d(cx_j, cy_j, bins=n, range=[[0, 1], [0, 1]])
+        Z = gaussian_filter(H.T, sigma=max(1.0, n * 0.02))
     return Z.astype(np.float32)
 
 
