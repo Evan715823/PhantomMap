@@ -232,9 +232,9 @@ answers ``yes'' without a bounding box on $81\%$ of its positive
 responses. Our parser handles all three quirks; no other
 model-specific code is needed.
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering\small
-\setlength{\tabcolsep}{4pt}
+\setlength{\tabcolsep}{6pt}
 \begin{tabular}{llccccc}
 \toprule
 \textbf{Model} & \textbf{Split} & $n$ & Acc. & Hall.\ rate & Yes rate & Valid bbox$\%$ \\
@@ -254,11 +254,11 @@ Qwen is much more willing to ground, but also much more willing to
 hallucinate; LLaVA is the opposite. Both provide abundant phantom
 and honest bboxes for the atlas.}
 \label{tab:rates}
-\end{table}
+\end{table*}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/fig3_atlas.pdf}
+\includegraphics[width=0.72\textwidth]{figures/fig3_atlas.pdf}
 \caption{\textbf{Phantom atlas.} KDE of phantom-box centres
 (phantom) vs honest-box centres (honest), per model. Phantom boxes
 are displaced \emph{outward} relative to the honest distribution for
@@ -298,7 +298,7 @@ and smaller in area than honest boxes, for both models.}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.95\columnwidth]{figures/fig4_roc.pdf}
+\includegraphics[width=\columnwidth]{figures/fig4_roc.pdf}
 \caption{\textbf{Detector ROC.} Training-free logistic regression on
 phantom-box features (solid) vs. a logit-only baseline (dashed) vs.
 chance. The published HALP internal-feature AUROC on Qwen2.5-VL is
