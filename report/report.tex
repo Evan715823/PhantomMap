@@ -143,6 +143,16 @@ token-level view with an image-level one. Visual CounterFact
 \cite{pixelsvspriors} studies the pixel-vs-prior conflict when the
 image contradicts world knowledge.
 
+\paragraph{Grounded VLMs and localisation.} The emergence of
+grounded VLMs such as Qwen2.5-VL~\cite{qwen25vl} has elevated object
+localisation from an auxiliary capability to a first-class skill,
+exposed through a public JSON-bbox interface that any downstream
+application can read. Evaluation has largely focused on whether the
+model points to the \emph{right} thing (RefCOCO-style benchmarks),
+leaving the question of where a grounded VLM points to the
+\emph{wrong} thing -- i.e.\ its phantoms -- essentially unstudied.
+PhantomMap fills that gap.
+
 Unlike all of the above, PhantomMap operates on the VLM's
 \emph{prompted bbox output} -- the channel actually exposed to a
 user via the public API -- and is the first to profile the
@@ -191,6 +201,17 @@ After standardising, we fit an $\ell_2$-regularised logistic regression
 chance, the single-feature logit-only score $-\log p_\text{yes}$, and
 the published HALP internal-feature AUROC of $0.787$ \cite{halp}.
 
+\paragraph{Implementation details.} Inference is greedy with
+temperature $0$ and batch size $1$ on a single $24$~GB L4 GPU via
+the official HuggingFace \texttt{transformers} chat templates for
+both models. Per-token log-probabilities are captured with
+\texttt{output\_scores=True}; the four coordinate tokens are
+identified by matching the emitted JSON substring against the bbox
+regex in our parser. Detector training is CPU-bound and completes
+in under $10$~seconds on a laptop; inference on a new sample costs
+one VLM forward pass and a single dot product with the learned
+weight vector.
+
 %%%%%%%%% EXPERIMENTS
 \section{Experiments and Results} \label{sec:exp}
 
@@ -204,26 +225,26 @@ $\sim$\,6 h. Qwen emits pixel coordinates; LLaVA emits normalised
 $[0,1]$ and grounds on only $19\%$ of its positive responses. The
 parser handles both formats with no model-specific code.
 
-\begin{table*}[!tb]
+\begin{table}[!htbp]
 \centering\small
-\setlength{\tabcolsep}{6pt}
-\begin{tabular}{llccccc}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llccc}
 \toprule
-\textbf{Model} & \textbf{Split} & $n$ & Acc. & Hall.\ rate & Yes rate & Valid bbox$\%$ \\
+\textbf{Model} & \textbf{Split} & Acc. & Hall. & bbox$\%$ \\
 \midrule
-Qwen2.5-VL-7B & adv. & 3000 & 0.658 & 0.625 & 0.783 & 100.0 \\
-Qwen2.5-VL-7B & pop. & 3000 & 0.683 & 0.575 & 0.758 & 100.0 \\
-Qwen2.5-VL-7B & rnd. & 3000 & 0.659 & 0.623 & 0.782 & 100.0 \\
+Qwen-7B   & adv. & 0.658 & 0.625 & 100.0 \\
+Qwen-7B   & pop. & 0.683 & 0.575 & 100.0 \\
+Qwen-7B   & rnd. & 0.659 & 0.623 & 100.0 \\
 \addlinespace
-LLaVA-NeXT-7B & adv. & 3000 & 0.860 & 0.145 & 0.506 & 19.1 \\
-LLaVA-NeXT-7B & pop. & 3000 & 0.898 & 0.070 & 0.468 & 18.9 \\
-LLaVA-NeXT-7B & rnd. & 3000 & 0.918 & 0.029 & 0.448 & 19.1 \\
+LLaVA-7B  & adv. & 0.860 & 0.145 & 19.1 \\
+LLaVA-7B  & pop. & 0.898 & 0.070 & 18.9 \\
+LLaVA-7B  & rnd. & 0.918 & 0.029 & 19.1 \\
 \bottomrule
 \end{tabular}
-\caption{POPE accuracy, hallucination rate, yes rate, and valid-bbox
-fraction on ``yes'' answers, per model per split.}
+\caption{POPE accuracy, hallucination rate, and valid-bbox
+fraction per model per split ($n{=}3000$ each).}
 \label{tab:rates}
-\end{table*}
+\end{table}
 
 \paragraph{Atlas (Fig.~\ref{fig:atlas}, Table~\ref{tab:atlas}).} Both
 models show the same pattern: phantom boxes have a larger mean
@@ -314,6 +335,21 @@ indicates the atlas signal we exploit is informative but not a
 single magic knob: the detector learns a multi-dimensional
 decision boundary rather than a simple threshold on size or
 position.
+
+\paragraph{Limitations and future work.} Three caveats apply. First,
+POPE draws its negatives from a fixed $80$-class COCO taxonomy, so
+the atlas may not generalise to open-vocabulary hallucinations where
+the imagined object lies outside this set. Second, we train and
+evaluate on the same image distribution (COCO val2014); cross-domain
+transfer to medical, satellite, or documentary imagery is untested.
+Third, we model only two summary statistics of the phantom bbox --
+centre distance and area -- whereas category-conditional priors or
+aspect-ratio skew could plausibly tighten the detector further. A
+natural follow-up is to extend the atlas to newer grounded VLMs
+(Molmo, InternVL3) and richer benchmarks (HallusionBench, BEAF), and
+to combine the first-party geometry signal with the internal-feature
+signal of HALP~\cite{halp} to see whether the two are complementary
+or redundant.
 
 \begin{figure}[!htbp]
 \centering
