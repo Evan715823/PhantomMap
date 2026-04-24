@@ -150,15 +150,15 @@ coordinates; \S\ref{sec:exp}) and clipped to $[0,W]\times[0,H]$ with
 minimum side $4$ px. Every generated token's greedy log-probability is
 logged.
 
-\begin{figure}[!htbp]
+\begin{figure*}[!tb]
 \centering
-\includegraphics[width=\columnwidth]{figures/fig2_method.pdf}
+\includegraphics[width=0.95\textwidth]{figures/fig2_method.pdf}
 \caption{PhantomMap pipeline. For each $(I, o)$ pair in POPE, the VLM
 is prompted for yes/no plus a bbox. When POPE labels the object
 absent, every ``yes'' is a phantom event and its bbox feeds both the
 atlas (\S\ref{sec:atlas}) and the detector (\S\ref{sec:detector}).}
 \label{fig:method}
-\end{figure}
+\end{figure*}
 
 \paragraph{Events.} A \emph{phantom event} is $(I, o, b)$ where POPE
 labels $o$ absent, the VLM says yes, and emits a valid bbox $b$. An
@@ -230,7 +230,7 @@ artefact of one model's grounding supervision.
 
 \begin{figure*}[!tb]
 \centering
-\includegraphics[width=0.72\textwidth]{figures/fig3_atlas.pdf}
+\includegraphics[width=0.55\textwidth]{figures/fig3_atlas.pdf}
 \caption{\textbf{Phantom atlas.} KDE of phantom-box centres vs
 honest-box centres, per model. Phantom boxes are displaced
 \emph{outward} relative to the honest distribution for both models.
