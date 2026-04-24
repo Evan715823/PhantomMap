@@ -57,22 +57,61 @@ def _coerce_answer(text: str) -> str:
     return "unknown"
 
 
-def _try_json_bbox(s: str) -> Optional[tuple[float, float, float, float]]:
-    """Iterate over {...} substrings; return the first that yields a valid bbox."""
-    # Prefer JSON-like dict with any of the common bbox keys first.
-    for m in _JSON_OBJ_RE.finditer(s):
-        chunk = m.group(0)
-        # Normalise single quotes and python-style True/False just in case.
-        chunk2 = chunk.replace("'", '"')
-        try:
-            obj = json.loads(chunk2)
-        except Exception:
-            continue
-        if not isinstance(obj, dict):
-            continue
-        for key in ("bbox_2d", "bbox", "box", "bounding_box"):
+_BBOX_KEYS = ("bbox_2d", "bbox", "box", "bounding_box")
+
+
+def _extract_bbox_from_obj(obj) -> Optional[tuple[float, float, float, float]]:
+    """Pull a bbox out of either a dict or a list-of-dicts."""
+    if isinstance(obj, dict):
+        for key in _BBOX_KEYS:
             if key in obj and _is_bbox_list(obj[key]):
                 return tuple(float(x) for x in obj[key])  # type: ignore[return-value]
+    if isinstance(obj, list):
+        for item in obj:
+            b = _extract_bbox_from_obj(item)
+            if b is not None:
+                return b
+    return None
+
+
+def _try_json_bbox(s: str) -> Optional[tuple[float, float, float, float]]:
+    """Search the string for any JSON object or JSON list whose elements
+    contain a bbox. Qwen2.5-VL sometimes emits:
+        {"bbox_2d": [x1,y1,x2,y2]}
+        [{"bbox_2d": [x1,y1,x2,y2], "label": "cat"}]
+        [{"bbox_2d": [x1,y1,x2,y2]}, {"bbox_2d": [...]}, ...]
+    All of these must resolve to a single bbox (we take the first)."""
+
+    # Strip markdown fences like ```json ... ``` first.
+    stripped = re.sub(r"```(?:json)?\s*", "", s)
+    stripped = stripped.replace("```", "")
+
+    # Try to parse the entire stripped string (after trimming) as JSON.
+    # Cheap win for well-formed outputs.
+    for candidate in (stripped.strip(), s.strip()):
+        try:
+            obj = json.loads(candidate)
+            b = _extract_bbox_from_obj(obj)
+            if b is not None:
+                return b
+        except Exception:
+            pass
+
+    # Fallback: greedy pass over substrings that look like JSON lists
+    # (`[...]`) or JSON dicts (`{...}`). We try lists first because when
+    # both are present the list is usually the outer container.
+    list_candidates = re.findall(r"\[\s*\{[\s\S]*?\}\s*(?:,\s*\{[\s\S]*?\}\s*)*\]", s)
+    dict_candidates = re.findall(r"\{[^{}]*\}", s)
+    for candidates in (list_candidates, dict_candidates):
+        for chunk in candidates:
+            chunk2 = chunk.replace("'", '"')
+            try:
+                obj = json.loads(chunk2)
+            except Exception:
+                continue
+            b = _extract_bbox_from_obj(obj)
+            if b is not None:
+                return b
     return None
 
 
@@ -96,9 +135,17 @@ def _is_bbox_list(v) -> bool:
 
 
 def parse(text: str) -> ParsedOutput:
-    """Main entry point: accept a raw VLM string, return structured output."""
+    """Main entry point: accept a raw VLM string, return structured output.
+
+    If the model emits a bounding box without an explicit "yes"/"no",
+    treat the bbox itself as an implicit "yes" — it's a first-party
+    assertion that the object is present in the image. In practice
+    Qwen2.5-VL frequently behaves this way on grounded prompts.
+    """
     answer = _coerce_answer(text)
     bbox = _try_json_bbox(text) or _try_raw_bbox(text)
+    if answer == "unknown" and bbox is not None:
+        answer = "yes"
     return ParsedOutput(answer=answer, bbox=bbox, raw=text)
 
 

@@ -262,10 +262,25 @@ def run_llava_one(model, processor, image_path: Path, prompt: str, max_new_token
 
 
 def _first_yes_no_logprob(tokens: list[str], logprobs: list[float]) -> float:
+    """Return the logprob of the first explicit 'yes' or 'no' token.
+
+    If the model skipped yes/no and jumped straight to a bbox (common for
+    Qwen2.5-VL grounded prompts), fall back to the logprob of the first
+    content-carrying token — we skip pure whitespace and markdown fences
+    like ``` so the fallback captures the model's confidence in the
+    actual assertion, not the opening of a code fence.
+    """
     for t, lp in zip(tokens, logprobs):
         low = t.strip().lower()
         if low in ("yes", "no"):
             return lp
+    for t, lp in zip(tokens, logprobs):
+        stripped = t.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("```") or stripped == "json":
+            continue
+        return lp
     return float("nan")
 
 
