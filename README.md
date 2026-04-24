@@ -102,11 +102,6 @@ Per the syllabus academic-integrity clause, here is the explicit split:
 - COCO val2014 images from the official COCO release ([arXiv:1405.0312](https://arxiv.org/abs/1405.0312)).
 - HuggingFace `transformers`, `scikit-learn`, `scipy`, `matplotlib`, `seaborn` as libraries (standard dependencies, not copied into the repo).
 
-### Assisted (AI)
-- Claude (Anthropic) was used for brainstorming the project angle,
-  sanity-checking related work, and scaffolding boilerplate code. See
-  [`AI_ACKNOWLEDGMENT.md`](./AI_ACKNOWLEDGMENT.md) for specifics.
-
 ## Team
 
 - **Author 1** (user) — evaluation code, VLM runs, detector, report §4–§5.
