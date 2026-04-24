@@ -124,15 +124,15 @@ def main():
         json.dump(stats, f, indent=2)
 
     # Figure: 2 rows (Qwen, LLaVA) x 2 cols (phantom, honest).
+    # Two-line titles prevent horizontal clash between adjacent panels.
     fig, axes = plt.subplots(
-        nrows=len(models), ncols=2, figsize=(6.8, 3.2 * len(models)), squeeze=False
+        nrows=len(models), ncols=2, figsize=(6.2, 2.6 * len(models)), squeeze=False
     )
     for row, m in enumerate(models):
         for col, kind in enumerate(("phantom", "honest")):
             ax = axes[row, col]
             cx, cy = _centers(by_model[m][kind])
             Z = kde_grid(cx, cy, n=150)
-            # Flip Y so image-y (top-left origin) maps to top of plot.
             ax.imshow(
                 np.flipud(Z),
                 extent=(0, 1, 0, 1),
@@ -142,14 +142,17 @@ def main():
             ax.scatter(cx, 1 - cy, s=2, c="white", alpha=0.25, linewidths=0)
             mean_d = center_bias(cx, cy)
             ax.set_title(
-                f"{MODEL_SHORT[m]} / {kind}  (n={len(cx)}, $\\bar{{d}}$={mean_d:.3f})",
+                f"{MODEL_SHORT[m]} / {kind}\n"
+                f"$n={len(cx)}$,  $\\bar{{d}}={mean_d:.3f}$",
                 fontsize=9,
+                pad=4,
             )
             ax.set_xticks([0, 0.5, 1.0])
             ax.set_yticks([0, 0.5, 1.0])
-            ax.set_xlabel("normalised x", fontsize=8)
-            ax.set_ylabel("normalised y", fontsize=8)
+            ax.set_xlabel("normalised $x$", fontsize=8)
+            ax.set_ylabel("normalised $y$", fontsize=8)
             ax.tick_params(labelsize=7)
+    fig.subplots_adjust(wspace=0.25, hspace=0.45)
     fig.tight_layout()
     args.out_fig.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out_fig, bbox_inches="tight")
