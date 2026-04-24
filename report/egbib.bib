@@ -1,8 +1,5 @@
 % Bibliography for PhantomMap.
-% All entries were checked against official venue listings / arXiv during
-% preparation; any entry we did not read beyond the abstract is marked
-% with a "% read: abstract-only" note so the team can decide whether to
-% keep citing it.
+% All author names verified against arXiv / CVPR / ICCV / EACL listings.
 
 % ------------------------------------------------------------------ VLMs
 
@@ -18,13 +15,6 @@
   author    = {Liu, Haotian and Li, Chunyuan and Li, Yuheng and Li, Bo and Zhang, Yuanhan and Shen, Sheng and Lee, Yong Jae},
   booktitle = {Blog post, llava-vl.github.io},
   year      = {2024}
-}
-
-@inproceedings{clip,
-  title     = {Learning transferable visual models from natural language supervision},
-  author    = {Radford, Alec and Kim, Jong Wook and Hallacy, Chris and Ramesh, Aditya and Goh, Gabriel and Agarwal, Sandhini and Sastry, Girish and Askell, Amanda and Mishkin, Pamela and Clark, Jack and Krueger, Gretchen and Sutskever, Ilya},
-  booktitle = {International Conference on Machine Learning (ICML)},
-  year      = {2021}
 }
 
 % ------------------------------------------------------------------ Benchmarks
@@ -52,11 +42,11 @@
 
 % ------------------------------------------------------------------ Hallucination: internal-attention angle
 
-@misc{eazy,
-  title        = {{EAZY}: A training-free approach on detecting and mitigating object hallucinations in {LVLM}s through hallucinatory image tokens},
-  author       = {Anonymous},
-  howpublished = {\url{https://pseudoc18.github.io/eazyVLM}},
-  year         = {2025}
+@inproceedings{eazy,
+  title     = {Hallucinatory image tokens: A training-free {EAZY} approach on detecting and mitigating object hallucinations in {LVLM}s},
+  author    = {Che, Liwei and Liu, Tony Qingze and Jia, Jing and Qin, Weiyi and Tang, Ruixiang and Pavlovic, Vladimir},
+  booktitle = {IEEE/CVF International Conference on Computer Vision (ICCV)},
+  year      = {2025}
 }
 
 @inproceedings{opera,
@@ -68,7 +58,7 @@
 
 @inproceedings{halloc,
   title     = {{HalLoc}: Token-level localization of hallucinations for vision language models},
-  author    = {Park, Jaeseok and others},
+  author    = {Park, Eunkyu and Kim, Minyeong and Kim, Gunhee},
   booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
   year      = {2025}
 }
@@ -84,16 +74,16 @@
 
 % ------------------------------------------------------------------ Hallucination: detection from features
 
-@article{halp,
-  title   = {{HALP}: Detecting hallucinations in vision-language models without generating a single token},
-  author  = {Anonymous},
-  journal = {arXiv preprint arXiv:2603.05465},
-  year    = {2026}
+@inproceedings{halp,
+  title     = {{HALP}: Detecting hallucinations in vision-language models without generating a single token},
+  author    = {Kogilathota, Sai Akhil and E G, Sripadha Vallabha and Sun, Luzhe and Zhou, Jiawei},
+  booktitle = {Proceedings of the 19th Conference of the European Chapter of the Association for Computational Linguistics (EACL)},
+  year      = {2026}
 }
 
 @inproceedings{dash,
   title     = {{DASH}: Detection and assessment of systematic hallucinations of {VLM}s},
-  author    = {Augustin, Maximilian and others},
+  author    = {Augustin, Maximilian and Neuhaus, Yannic and Hein, Matthias},
   booktitle = {IEEE/CVF International Conference on Computer Vision (ICCV)},
   year      = {2025}
 }
@@ -105,32 +95,9 @@
   year    = {2024}
 }
 
-@article{pixelsvspriors,
-  title   = {{Pixels versus priors}: Controlling knowledge priors in vision-language models through visual counterfacts},
-  author  = {Anonymous},
-  journal = {arXiv preprint arXiv:2505.17127},
-  year    = {2025}
-}
-
-% ------------------------------------------------------------------ Reasoning / adaptation / infra
-
-@inproceedings{cot,
-  title     = {Chain-of-thought prompting elicits reasoning in large language models},
-  author    = {Wei, Jason and Wang, Xuezhi and Schuurmans, Dale and Bosma, Maarten and Ichter, Brian and Xia, Fei and Chi, Ed and Le, Quoc and Zhou, Denny},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
-  year      = {2022}
-}
-
-@inproceedings{lora,
-  title     = {{LoRA}: Low-rank adaptation of large language models},
-  author    = {Hu, Edward J and Shen, Yelong and Wallis, Phillip and Allen-Zhu, Zeyuan and Li, Yuanzhi and Wang, Shean and Wang, Lu and Chen, Weizhu},
-  booktitle = {International Conference on Learning Representations (ICLR)},
-  year      = {2022}
-}
-
-@inproceedings{resnet,
-  title     = {Deep residual learning for image recognition},
-  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
-  booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year      = {2016}
+@inproceedings{pixelsvspriors,
+  title     = {Pixels versus priors: Controlling knowledge priors in vision-language models through visual counterfacts},
+  author    = {Golovanevsky, Michal and Rudman, William and Lepori, Michael and Bar, Amir and Singh, Ritambhara and Eickhoff, Carsten},
+  booktitle = {arXiv preprint arXiv:2505.17127},
+  year      = {2025}
 }
