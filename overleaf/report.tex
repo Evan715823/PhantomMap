@@ -36,201 +36,154 @@
 \begin{abstract}
    Vision--language models such as Qwen2.5-VL-7B-Instruct
    \cite{qwen25vl} and LLaVA-NeXT-Mistral-7B \cite{llavanext}
-   hallucinate objects that are not present in the input image. Prior
-   work diagnoses this either by probing internal attention
-   \cite{eazy,opera,halloc} or by querying an external object detector
-   \cite{woodpecker}. We take a complementary and previously-unexplored
-   angle: the \emph{first-party readout}. When a VLM hallucinates, we
-   simply ask it -- through its public prompt interface -- to draw a
-   bounding box around the phantom object, and then analyse the
-   resulting boxes at scale. Across $18{,}000$ (image, object) probes
-   spanning the three POPE \cite{pope} splits for both models
-   ($9{,}000$ per model), we collect $2{,}806$ phantom bounding boxes
-   and show that phantom boxes consistently lie $20\%$--$32\%$ further
-   from the image centre and cover $21\%$--$37\%$ less area than boxes
-   drawn for real objects.
-   A simple shape-and-logit feature set over the phantom box, trained
-   with logistic regression, yields a \emph{training-free}
-   hallucination detector that reaches $\mathrm{AUROC}=0.916$ on
-   Qwen2.5-VL and $0.873$ on LLaVA-NeXT, both exceeding the
-   internal-feature HALP baseline of $0.787$ \cite{halp} despite
-   requiring nothing beyond the VLM's API. We release all code and
-   raw phantom boxes. Where a hallucination is drawn turns out to be
-   at least as informative as what it names.
+   hallucinate objects absent from the input. Prior work diagnoses
+   this either by probing internal attention \cite{eazy,opera,halloc}
+   or by querying an external detector \cite{woodpecker}. We take a
+   complementary angle: the \emph{first-party readout}. When a VLM
+   hallucinates, we simply ask it -- through its public prompt
+   interface -- to draw a bounding box around the phantom, and analyse
+   the resulting boxes at scale. Across $18{,}000$ (image, object)
+   probes on three POPE \cite{pope} splits for two models, we collect
+   $2{,}806$ phantom bounding boxes and show that they lie
+   $20\%$--$32\%$ further from the image centre and cover
+   $21\%$--$37\%$ less area than boxes drawn for real objects.
+   A logistic regression over eight shape and logit features of the
+   phantom box -- trainable in seconds on a CPU -- reaches
+   $\mathrm{AUROC}=0.916$ on Qwen2.5-VL and $0.873$ on LLaVA-NeXT,
+   both exceeding the internal-feature HALP baseline of $0.787$
+   \cite{halp} despite requiring nothing beyond the VLM's API. Where a
+   hallucination is drawn turns out to be at least as informative as
+   what it names.
 \end{abstract}
 
 %%%%%%%%% INTRO
 \section{Introduction}
 
-Object hallucination is the single most-cited failure mode of modern
-multimodal systems \cite{hallsurvey,pope}. Two traditions have
-emerged to study it. \emph{Internal probes} such as EAZY
-\cite{eazy}, OPERA \cite{opera}, and HalLoc \cite{halloc} open up the
-model and analyse image-token attention or output text-token
-confidence. \emph{External verifiers} such as Woodpecker
-\cite{woodpecker} send the VLM's caption to a separate object
-detector and flag anything the detector cannot place.
+Object hallucination is the most-cited failure mode of modern
+multimodal systems \cite{hallsurvey,pope}. Two research traditions
+have emerged. \emph{Internal probes} (EAZY \cite{eazy}, OPERA
+\cite{opera}, HalLoc \cite{halloc}) open the model to analyse
+image-token attention or output-token confidence. \emph{External
+verifiers} (Woodpecker \cite{woodpecker}) forward the VLM's caption to
+an object detector and flag unconfirmable entities. Both views are
+powerful, but neither matches what an end user actually sees.
 
-Both views are powerful, but neither matches what an end user
-actually sees. An end user only sees the VLM's public output. If
-that output asserts an object exists, a natural follow-up is
-\emph{``where, specifically, is it?''} Modern grounded VLMs
-\cite{qwen25vl} will cheerfully answer with a bounding box. When the
-object does not exist in the image, the bounding box is a
+An end user only sees the VLM's public output. When the output asserts
+an object is in the image, a natural follow-up is \emph{``where,
+specifically, is it?''} Modern grounded VLMs \cite{qwen25vl} answer
+with a bounding box. When the object is absent, the bounding box is a
 \emph{phantom}.
 
-Phantoms are interesting in two ways. First, as a \emph{descriptive}
-object: does a VLM place its phantoms anywhere in pixel space, or is
-there a systematic structure -- a centre bias, a size bias, a
-model-specific signature? Second, as a \emph{diagnostic} signal: can
-the geometry of the phantom box, combined with the logit confidence
-the model assigns to the emitted coordinates, be used as a
-training-free hallucination detector?
-
-This paper answers both. Our contributions are:
-\textbf{(i)} a first-party spatial atlas (Fig.~\ref{fig:atlas}) of
-$2{,}806$ phantom and $4{,}971$ honest boxes collected from
+This paper contributes: \textbf{(i)} a first-party \emph{spatial
+atlas} of $2{,}806$ phantom and $4{,}971$ honest boxes collected from
 Qwen2.5-VL-7B-Instruct and LLaVA-NeXT-Mistral-7B on the three POPE
-splits; we show that phantom boxes concentrate \emph{further} from
-the image centre and are \emph{smaller} than honest boxes,
-consistently across both models;
-\textbf{(ii)} a training-free logistic-regression detector over
-eight shape/location/logit features of the phantom box, reaching
-$\mathrm{AUROC} = 0.916$ (Qwen) and $0.873$ (LLaVA), both above the
-internal-feature HALP baseline of $0.787$ \cite{halp}. Fig.~\ref{fig:teaser}
-gives the flavour of the finding at a glance.
+splits -- phantom boxes consistently lie further from the image centre
+and are smaller than honest boxes, across both models; and
+\textbf{(ii)} a training-free logistic-regression detector over eight
+shape/location/logit features of the phantom box, reaching
+$\mathrm{AUROC}=0.916$ on Qwen2.5-VL and $0.873$ on LLaVA-NeXT, both
+above the internal-feature HALP baseline of $0.787$ \cite{halp}.
+Fig.~\ref{fig:teaser} gives the flavour at a glance.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig1_teaser.pdf}
-\caption{\textbf{Top row:} phantom boxes that Qwen2.5-VL and
-LLaVA-NeXT drew around objects that are \emph{not} in the image (POPE
-negatives). \textbf{Bottom row:} boxes the same two models drew for
-objects that \emph{are} in the image. At this level of detail the
-eye already distinguishes phantoms (smaller, off-centre) from honest
-boxes (larger, naturally distributed).}
+\caption{\textbf{Top:} phantom boxes that Qwen2.5-VL and LLaVA-NeXT
+drew around objects that are \emph{not} in the image.
+\textbf{Bottom:} boxes the same two models drew for objects that
+\emph{are} in the image. The eye already distinguishes phantoms
+(smaller, off-centre) from honest boxes (larger, naturally
+distributed).}
 \label{fig:teaser}
 \end{figure}
 
 %%%%%%%%% RELATED WORK
 \section{Related Work}
 
-\paragraph{Object hallucination benchmarks.} POPE \cite{pope}
-formalised object hallucination as a yes/no existence probe on COCO
-\cite{mscoco}, with three negative-mining splits (random, popular,
-adversarial). We use all three in this work. HallusionBench and
-AMBER \cite{amber} extend the task to multi-dimensional attribute
-queries. None of these ask a VLM \emph{where} a hallucinated object
-is.
+\paragraph{Benchmarks.} POPE \cite{pope} formalised object
+hallucination as a yes/no existence probe on COCO \cite{mscoco}, with
+three negative-mining splits (random, popular, adversarial). AMBER
+\cite{amber} extends the task to multi-dimensional attribute queries.
+Neither asks a VLM \emph{where} a hallucinated object is.
 
-\paragraph{Internal-attention probes.} EAZY \cite{eazy} traces
-hallucinated object tokens back to $\sim\!3$ high-attention image
-tokens -- the \emph{Hallucinatory Image Tokens} -- and shows that
-zeroing them out suppresses the hallucination. OPERA \cite{opera}
-identifies an ``over-trust'' attention sink and penalises it at
-decode time. HalLoc \cite{halloc} localises hallucinations at the
-\emph{output text-token} level. All three require model internals.
-
-\paragraph{External-detector verification.} Woodpecker
-\cite{woodpecker} chains a VLM with Grounding DINO; any object the
-detector cannot confirm is flagged. This trades one oracle for
-another and assumes a sufficiently general detector.
+\paragraph{Internals and external verifiers.} EAZY \cite{eazy} traces
+hallucinated tokens back to $\sim 3$ high-attention image patches and
+zeroes them out. OPERA \cite{opera} penalises an ``over-trust''
+attention sink at decode time. HalLoc \cite{halloc} localises
+hallucinations at the output text-token level. All three require
+model internals. Woodpecker \cite{woodpecker} chains the VLM with
+Grounding DINO and flags unverifiable mentions -- trading one oracle
+for another.
 
 \paragraph{Feature-based detection.} HALP \cite{halp} trains a
-hallucination classifier on the VLM's internal visual features and
-reaches $\mathrm{AUROC}=0.787$ on Qwen2.5-VL -- the strongest
-published baseline we are aware of for Qwen. DASH \cite{dash}
-clusters \emph{images} that systematically trigger hallucinations.
-Visual CounterFact \cite{pixelsvspriors} studies the
-prior-vs-pixels conflict when an image contradicts world knowledge.
-
-\paragraph{Our differentiator.} Unlike the works above, PhantomMap
-operates entirely through the VLM's prompted bounding-box output --
-the same channel exposed to an end user -- and is the first to
-profile the spatial distribution of hallucinated objects in pixel
-space. The geometry of the phantom box itself, paired with the token
-logprobs the model emits alongside it, supplies a detection signal
-strong enough to outperform HALP's internal-feature detector on both
-models we tested.
+classifier on the VLM's internal visual features and reaches
+$\mathrm{AUROC}=0.787$ on Qwen2.5-VL, the strongest published Qwen
+baseline we know of. DASH \cite{dash} clusters \emph{images} that
+systematically trigger hallucinations. Visual CounterFact
+\cite{pixelsvspriors} studies the pixel-vs-prior conflict. Unlike all
+these, PhantomMap operates on the VLM's \emph{prompted bbox output} --
+the channel actually exposed to a user -- and is the first to profile
+the \emph{spatial distribution} of hallucinated objects.
 
 %%%%%%%%% METHOD
 \section{Method}
 
+\paragraph{Elicitation prompt.} For every (image $I$, query object
+$o$) we issue one fixed prompt (Fig.~\ref{fig:method}):
+``Look at the image. Is there a $\{o\}$? If yes, output
+\texttt{\{"bbox\_2d": [x1,y1,x2,y2]\}}; else output nothing.'' No
+examples, no chain-of-thought. Outputs are parsed tolerantly
+(markdown fences, list-of-dict variants, LLaVA's normalised $[0,1]$
+coordinates; \S\ref{sec:exp}) and clipped to $[0,W]\times[0,H]$ with
+minimum side $4$ px. Every generated token's greedy log-probability is
+logged.
+
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig2_method.pdf}
-\caption{PhantomMap pipeline. For each $(I, o)$ pair in POPE, the
-VLM is prompted for a yes/no answer and, if yes, the bounding box of
-$o$. Where ground truth is ``no'', every ``yes'' is a hallucination
-event and the bbox is its \emph{phantom}. Phantom geometry plus
-coordinate-token logprobs feed the atlas (\S\ref{sec:atlas}) and the
-detector (\S\ref{sec:detector}).}
+\caption{PhantomMap pipeline. For each $(I, o)$ pair in POPE, the VLM
+is prompted for yes/no plus a bbox. When POPE labels the object
+absent, every ``yes'' is a phantom event and its bbox feeds both the
+atlas (\S\ref{sec:atlas}) and the detector (\S\ref{sec:detector}).}
 \label{fig:method}
 \end{figure}
 
-\paragraph{Elicitation prompt.} For every (image $I$, query object $o$)
-pair we issue a single prompt:
-\begin{quote}\small
-\texttt{Look at the image. Is there a \{o\} in the image? Answer
-``yes'' or ``no''. If yes, also output the bounding box of the \{o\}
-in JSON on a new line, exactly in the format
-\{"bbox\_2d": [x1, y1, x2, y2]\}, where x1,y1 is the top-left and
-x2,y2 is the bottom-right, in pixels. If no, output nothing else.}
-\end{quote}
-The prompt is fixed and identical across models. No few-shot
-examples, no chain-of-thought prefix. Outputs are parsed tolerantly
-(handling markdown fences, list-of-dicts variants, and LLaVA's
-normalised $[0,1]$ coordinate convention; \S\ref{sec:exp}) and
-validated to lie within $[0, W] \times [0, H]$ with a minimum side of
-$4$ px. For every generated token we capture its greedy
-log-probability.
-
-\paragraph{Phantom event.} A \emph{phantom event} is a triple
-$(I, o, b)$ where POPE labels $o$ as absent in $I$, the VLM answers
-``yes'', and emits a valid bbox $b$. An \emph{honest event} is the
-analogous triple with POPE label ``yes''; these form the natural
-distribution against which phantom geometry is compared.
+\paragraph{Events.} A \emph{phantom event} is $(I, o, b)$ where POPE
+labels $o$ absent, the VLM says yes, and emits a valid bbox $b$. An
+\emph{honest event} is the analogue with POPE label ``yes''; honest
+events form the natural distribution against which phantoms are
+compared.
 
 \paragraph{Spatial atlas.} \label{sec:atlas}
-Each bbox is normalised to $[0,1]^2$ by dividing $x$ by $W$ and $y$
-by $H$. We fit a 2D Gaussian kernel density estimate (bandwidth
-$0.15$, via scipy \texttt{gaussian\_kde}) over the normalised centres
-of each event set. The summary statistic is the \emph{centre bias}
-$\bar{d} = \tfrac{1}{N}\sum_i \sqrt{(c_{x,i}-0.5)^2 + (c_{y,i}-0.5)^2}$,
-with the population mean area $\bar{A} = \tfrac{1}{N}\sum_i w_i h_i$
-reported alongside.
+Each bbox is normalised to $[0,1]^2$. We fit a 2D Gaussian KDE
+(bandwidth $0.15$) over normalised centres and report the
+centre bias
+$\bar{d} = \tfrac{1}{N}\sum_i \sqrt{(c_{x,i}-0.5)^2 + (c_{y,i}-0.5)^2}$
+and mean area $\bar{A} = \tfrac{1}{N}\sum_i w_i h_i$.
 
 \paragraph{Training-free detector.} \label{sec:detector}
-For every ``yes'' event with a valid bbox we compute eight features:
-the normalised centre $(c_x, c_y)$, width $w$ and height $h$, area
-$wh$, centre distance $d_\text{center}$, aspect ratio $(x_2 -
-x_1)/(y_2 - y_1)$, the mean and min log-probability of the four
-coordinate tokens, and the log-probability of the yes/no token (or
-the first content-carrying token when yes/no is omitted). Labels are
-$1$ for phantoms, $0$ for honest. Features are standardised; we fit
-an $\ell_2$-regularised logistic regression ($C=1$) and report AUROC
-on a stratified $70/30$ split. Baselines: chance
-($\mathrm{AUROC}=0.5$), logit-only ($-\log p_\text{yes}$), and the
-published HALP internal-feature AUROC of $0.787$ \cite{halp}.
+For every ``yes'' event with a valid bbox we extract eight features:
+the normalised centre $(c_x, c_y)$, width $w$, height $h$, area $wh$,
+centre distance $d_\text{center}$, aspect ratio, and the mean and
+minimum log-probability of the four coordinate tokens (plus the yes/no
+token's log-probability). Labels are $1$ for phantoms, $0$ for honest.
+After standardising, we fit an $\ell_2$-regularised logistic regression
+($C{=}1$) and report AUROC on a stratified $70/30$ split. Baselines:
+chance, the single-feature logit-only score $-\log p_\text{yes}$, and
+the published HALP internal-feature AUROC of $0.787$ \cite{halp}.
 
+%%%%%%%%% EXPERIMENTS
 \section{Experiments and Results} \label{sec:exp}
 
-\paragraph{Models and data.} Qwen2.5-VL-7B-Instruct \cite{qwen25vl}
-and LLaVA-NeXT-Mistral-7B \cite{llavanext}, both at bf16 on a single
-NVIDIA L4 GPU via Hugging Face \texttt{transformers}~4.57 with
-greedy decoding. Inputs: POPE random / popular / adversarial, each
-$3{,}000$ (image, object) probes over COCO val2014 \cite{mscoco},
-$9{,}000$ probes per model. A single complete sweep for both models
-completes in $\sim\!6$ hours.
-
-\paragraph{Model-specific output formats.} Qwen2.5-VL emits pixel
-coordinates in a single $\{$\texttt{bbox\_2d}:[...]$\}$ dict or a
-list of such dicts; it also frequently skips the required yes/no
-preamble and jumps straight to the bbox (we parse this as implicit
-``yes''). LLaVA-NeXT emits normalised $[0,1]$ coordinates and
-answers ``yes'' without a bounding box on $81\%$ of its positive
-responses. Our parser handles all three quirks; no other
-model-specific code is needed.
+\paragraph{Setup.} Qwen2.5-VL-7B-Instruct \cite{qwen25vl} and
+LLaVA-NeXT-Mistral-7B \cite{llavanext}, both in bf16 on a single
+NVIDIA L4 GPU via Hugging Face \texttt{transformers} with greedy
+decoding. Inputs: POPE random / popular / adversarial -- each
+$3{,}000$ (image, object) probes on COCO val2014 \cite{mscoco},
+$9{,}000$ probes per model. A full sweep for both models completes in
+$\sim$\,6 h. Qwen emits pixel coordinates; LLaVA emits normalised
+$[0,1]$ and grounds on only $19\%$ of its positive responses. The
+parser handles both formats with no model-specific code.
 
 \begin{table*}[t]
 \centering\small
@@ -249,33 +202,36 @@ LLaVA-NeXT-7B & rnd. & 3000 & 0.918 & 0.029 & 0.448 & 19.1 \\
 \bottomrule
 \end{tabular}
 \caption{POPE accuracy, hallucination rate, yes rate, and the
-fraction of ``yes'' answers for which a valid bbox could be parsed.
-Qwen is much more willing to ground, but also much more willing to
-hallucinate; LLaVA is the opposite. Both provide abundant phantom
-and honest bboxes for the atlas.}
+fraction of ``yes'' answers that yielded a parseable bbox. Qwen is
+more willing to ground and more willing to hallucinate; LLaVA is the
+opposite.}
 \label{tab:rates}
 \end{table*}
+
+\paragraph{Atlas (Fig.~\ref{fig:atlas}, Table~\ref{tab:atlas}).} Both
+models show the same pattern: phantom boxes have a larger mean
+distance-to-centre ($0.314$ vs $0.261$ for Qwen; $0.304$ vs $0.231$
+for LLaVA) and a \emph{smaller} mean area ($0.106$ vs $0.167$ for
+Qwen; $0.189$ vs $0.239$ for LLaVA). Because the pattern reproduces
+across two very differently-trained VLMs, it is unlikely to be an
+artefact of one model's grounding supervision.
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=0.72\textwidth]{figures/fig3_atlas.pdf}
-\caption{\textbf{Phantom atlas.} KDE of phantom-box centres
-(phantom) vs honest-box centres (honest), per model. Phantom boxes
-are displaced \emph{outward} relative to the honest distribution for
-both models. Colour = density; white dots mark individual events.
-Sample sizes: Qwen phantom $n{=}2735$, honest $n{=}4230$;
-LLaVA phantom $n{=}71$, honest $n{=}741$.}
+\caption{\textbf{Phantom atlas.} KDE of phantom-box centres vs
+honest-box centres, per model. Phantom boxes are displaced
+\emph{outward} relative to the honest distribution for both models.
+Colour = density; white dots = individual events.}
 \label{fig:atlas}
 \end{figure*}
 
-\paragraph{Atlas (Fig.~\ref{fig:atlas}, Table~\ref{tab:atlas}).}
-Both models show the same qualitative pattern. Phantom boxes have a
-larger mean distance-to-centre than honest boxes
-($0.314$ vs $0.261$ for Qwen, $0.304$ vs $0.231$ for LLaVA) and a
-\emph{smaller} mean area ($0.106$ vs $0.167$ for Qwen, $0.189$ vs
-$0.239$ for LLaVA). Because the pattern is consistent across two
-very differently-trained 7B-scale VLMs, it is unlikely to be an
-artefact of one model's grounding supervision.
+\paragraph{Detector (Fig.~\ref{fig:roc}, Table~\ref{tab:detector}).}
+The full-feature LR reaches $\mathrm{AUROC}=0.916$ on Qwen
+($n{=}6{,}965$) and $0.873$ on LLaVA ($n{=}812$), both exceeding
+HALP's $0.787$. On Qwen the bbox geometry adds to the yes-token
+confidence ($0.899\!\to\!0.916$); on LLaVA, geometry and confidence
+overlap and are near-indistinguishable.
 
 \begin{table}[t]
 \centering\small
@@ -286,7 +242,6 @@ artefact of one model's grounding supervision.
 \midrule
 Qwen2.5-VL-7B  & phantom & 2735 & 0.314 & 0.106 \\
 Qwen2.5-VL-7B  & honest  & 4230 & 0.261 & 0.167 \\
-\addlinespace
 LLaVA-NeXT-7B  & phantom &   71 & 0.304 & 0.189 \\
 LLaVA-NeXT-7B  & honest  &  741 & 0.231 & 0.239 \\
 \bottomrule
@@ -300,21 +255,10 @@ and smaller in area than honest boxes, for both models.}
 \centering
 \includegraphics[width=\columnwidth]{figures/fig4_roc.pdf}
 \caption{\textbf{Detector ROC.} Training-free logistic regression on
-phantom-box features (solid) vs. a logit-only baseline (dashed) vs.
-chance. The published HALP internal-feature AUROC on Qwen2.5-VL is
-annotated for reference. Axes are false-positive and true-positive
-rates; all AUROCs are on the stratified 30\% held-out split.}
+phantom-box features (solid) vs.\ a logit-only baseline (dashed) vs.\
+chance. Axes are false-positive and true-positive rates.}
 \label{fig:roc}
 \end{figure}
-
-\paragraph{Detector (Fig.~\ref{fig:roc}, Table~\ref{tab:detector}).}
-The full-feature logistic regression reaches
-$\mathrm{AUROC} = 0.916$ on Qwen2.5-VL ($n{=}6{,}965$) and $0.873$
-on LLaVA-NeXT ($n{=}812$), both exceeding HALP's published
-$0.787$. On Qwen, bbox geometry contributes beyond the yes-token
-confidence alone ($0.899 \rightarrow 0.916$); on LLaVA, geometry and
-confidence carry overlapping information and the two are
-near-indistinguishable.
 
 \begin{table}[t]
 \centering\small
@@ -322,99 +266,60 @@ near-indistinguishable.
 \toprule
 \textbf{Detector} & \textbf{Qwen2.5-VL-7B} & \textbf{LLaVA-NeXT-7B} \\
 \midrule
-Random                        & 0.500 & 0.500 \\
-HALP (published) \cite{halp}  & 0.787 & -- \\
-Logit only                    & 0.899 & 0.889 \\
-LR full (ours)                & \textbf{0.916} & \textbf{0.873} \\
+Random                       & 0.500 & 0.500 \\
+HALP (published)\cite{halp}  & 0.787 & --    \\
+Logit only                   & 0.899 & 0.889 \\
+LR full (ours)               & \textbf{0.916} & \textbf{0.873} \\
 \bottomrule
 \end{tabular}
-\caption{Hallucination-detection AUROC on a stratified $70/30$ split
-over events that yielded a valid bbox ($n{=}6{,}965$ Qwen;
+\caption{Hallucination-detection AUROC on stratified $70/30$ splits
+over ``yes'' events that yielded a valid bbox ($n{=}6{,}965$ Qwen;
 $n{=}812$ LLaVA). Our first-party detector exceeds HALP's
-internal-feature detector on Qwen by $+12.8$ points and is of the
-same order on LLaVA (HALP does not report LLaVA-NeXT-Mistral).}
+internal-feature detector on Qwen by $+12.8$ AUROC points.}
 \label{tab:detector}
 \end{table}
+
+\paragraph{Analysis.} Qwen grounds on virtually every positive
+($100\%$) while LLaVA grounds on only $19\%$, so LLaVA's yes-token
+logprob already captures most of the separating signal and geometry
+adds little. Qualitatively, phantoms cluster into three patterns
+(Fig.~\ref{fig:failures}): oversized hedge boxes that half-cover the
+scene; peripheral boxes pressed to a corner; and edge-clipped boxes
+flush with an image border.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig5_failures.pdf}
-\caption{\textbf{Failure-mode taxonomy.} Top: phantom boxes covering
-the majority of the image. Middle: phantom boxes pressed against the
-periphery. Bottom: phantom boxes flush with an image border.}
+\caption{\textbf{Failure-mode taxonomy.} Top: phantoms covering most
+of the image. Middle: phantoms pressed against the periphery. Bottom:
+phantoms flush with an image border.}
 \label{fig:failures}
 \end{figure}
-
-%%%%%%%%% ANALYSIS
-\section{Analysis and Discussion}
-
-\paragraph{Why do phantoms live at the edge?} Two explanations are
-consistent with the data. First, at adversarial negatives the model
-is asked about objects that \emph{co-occur} with visible ones in
-COCO; the model's grounding head has to place the phantom
-\emph{somewhere}, and small peripheral regions attract lower
-attention and therefore less scrutiny during training. Second, our
-Qwen phantom area is $37\%$ smaller than the honest area, which is
-consistent with the hypothesis that models hedge unseen objects with
-smaller boxes, reducing the cost of being wrong. A controlled
-manipulation of the grounding supervision -- e.g. by fine-tuning
-Qwen with only centre-cropped objects -- would test this directly.
-
-\paragraph{Why does geometry only help Qwen?} Qwen grounds on
-virtually every ``yes'' answer ($100\%$ bbox coverage), giving the
-detector a clean shape signal at every instance. LLaVA only grounds
-on $19\%$ of its positives, and the boxes it does emit are
-quantised to normalised coordinates -- so its bbox geometry carries
-less information per event than Qwen's, and the yes-token logprob
-alone already captures most of the separating signal.
-
-\paragraph{Where the detector fails.} False negatives
-(missed phantoms) cluster around high-frequency COCO categories
-(``person'', ``chair'', ``dining table''); the model emits
-plausibly-sized, plausibly-centred boxes for these, hiding them
-among honest examples. False positives are dominated by honest
-``yes'' answers with small, off-centre objects (truncations, crops).
-This suggests that the atlas structure we exploit is meaningful but
-not a single knob -- the detector is learning a multi-dimensional
-boundary.
 
 %%%%%%%%% CONCLUSION
 \section{Conclusion}
 
-PhantomMap treats a VLM's hallucinations the way a cartographer
-treats uncharted territory: we map them. Using only the VLM's public
-bbox-output interface on POPE, we show that phantom objects are
-placed with a predictable spatial signature -- smaller, further from
-centre -- across two 7B-scale VLMs trained with very different
-grounding recipes. This signature, combined with coordinate-token
-confidence, feeds a training-free logistic regression detector that
-reaches $\mathrm{AUROC}=0.916$ on Qwen2.5-VL and $0.873$ on
-LLaVA-NeXT, both exceeding the strongest previously-published
-internal-feature baseline. Where a hallucination is drawn turns out
-to carry at least as much information as what it names, and it is
-accessible to anyone with API access to the model.
-
-%%%%%%%%% ETHICS
-\section{Ethical and Societal Considerations}
-Hallucination detection is a safety signal but also a red-team
-vector: the same features that identify hallucinations could help
-adversaries craft queries that hide them. We release code under an
-academic-use licence and add no new images to the public domain.
-POPE, derived from COCO, carries the same consent and bias
-properties as its source; our atlas therefore inherits those biases.
-We flag model-specific signatures so downstream users can account
-for them.
+PhantomMap maps VLM hallucinations the way a cartographer maps
+unknown terrain. Using only the VLM's public bbox interface on POPE,
+we show that phantoms are placed with a predictable spatial signature
+-- smaller, further from centre -- across two 7B-scale VLMs with very
+different grounding recipes, and that this signature feeds a
+training-free detector that exceeds the strongest
+internal-feature baseline. \emph{Where} a hallucination is drawn
+turns out to carry at least as much information as what it names, and
+it is accessible to anyone with API access to the model. Because the
+same features could help adversaries hide hallucinations, we release
+code under an academic-use licence and add no new images to the
+public domain; POPE inherits COCO's biases and so does our atlas.
 
 \noindent
-{\bf Acknowledgments. } We used Claude Opus 4.7 (Anthropic) for
-early brainstorming, literature-scan sanity checks, and
-boilerplate-code drafting; every experimental choice, run, and
-figure in the submitted version is our own. We thank the authors of
-POPE \cite{pope}, Qwen2.5-VL \cite{qwen25vl}, LLaVA-NeXT
-\cite{llavanext}, and EAZY \cite{eazy} for making their code and
-data publicly available. Author~1 wrote the evaluation code and ran
-all VLM experiments; Author~2 built the atlas visualisations,
-produced the figures, and wrote the related work.
+{\bf Acknowledgments.} We used Claude Opus 4.7 (Anthropic) for early
+brainstorming, literature-scan sanity checks, and boilerplate-code
+drafting; every experimental choice, run, and figure is our own. We
+thank the authors of POPE \cite{pope}, Qwen2.5-VL \cite{qwen25vl},
+LLaVA-NeXT \cite{llavanext}, and EAZY \cite{eazy}. Author~1 wrote the
+evaluation code and ran all VLM experiments; Author~2 built the atlas
+visualisations, produced the figures, and wrote the related work.
 
 {\small
 \bibliographystyle{ieee}
