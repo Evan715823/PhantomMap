@@ -124,9 +124,10 @@ def main():
         json.dump(stats, f, indent=2)
 
     # Figure: 2 rows (Qwen, LLaVA) x 2 cols (phantom, honest).
-    # Two-line titles prevent horizontal clash between adjacent panels.
+    # Sized to fit a single CVPR column (~3.3 in) at width=\columnwidth;
+    # two-line titles prevent horizontal clash between adjacent panels.
     fig, axes = plt.subplots(
-        nrows=len(models), ncols=2, figsize=(6.2, 2.6 * len(models)), squeeze=False
+        nrows=len(models), ncols=2, figsize=(4.4, 2.0 * len(models)), squeeze=False
     )
     for row, m in enumerate(models):
         for col, kind in enumerate(("phantom", "honest")):

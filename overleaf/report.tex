@@ -7,6 +7,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{booktabs}
+\usepackage{placeins}
 
 \usepackage[breaklinks=true,bookmarks=false]{hyperref}
 
@@ -228,15 +229,15 @@ Qwen; $0.189$ vs $0.239$ for LLaVA). Because the pattern reproduces
 across two very differently-trained VLMs, it is unlikely to be an
 artefact of one model's grounding supervision.
 
-\begin{figure*}[!tb]
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.55\textwidth]{figures/fig3_atlas.pdf}
+\includegraphics[width=\columnwidth]{figures/fig3_atlas.pdf}
 \caption{\textbf{Phantom atlas.} KDE of phantom-box centres vs
 honest-box centres, per model. Phantom boxes are displaced
 \emph{outward} relative to the honest distribution for both models.
 Colour = density; white dots = individual events.}
 \label{fig:atlas}
-\end{figure*}
+\end{figure}
 
 \paragraph{Detector (Fig.~\ref{fig:roc}, Table~\ref{tab:detector}).}
 The full-feature LR reaches $\mathrm{AUROC}=0.916$ on Qwen
@@ -307,6 +308,8 @@ of the image. Middle: phantoms pressed against the periphery. Bottom:
 phantoms flush with an image border.}
 \label{fig:failures}
 \end{figure}
+
+\FloatBarrier
 
 %%%%%%%%% CONCLUSION
 \section{Conclusion}
