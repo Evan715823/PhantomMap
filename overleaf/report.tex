@@ -10,6 +10,18 @@
 
 \usepackage[breaklinks=true,bookmarks=false]{hyperref}
 
+% Float placement: let LaTeX fill more of each page with figures so
+% they land near their in-text reference rather than piling up at the
+% end. Defaults (0.7/0.2) are too conservative for figure-heavy
+% short papers.
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.07}
+\renewcommand{\floatpagefraction}{0.75}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{5}
+
 \cvprfinalcopy
 \def\cvprPaperID{****}
 \def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
@@ -85,7 +97,7 @@ $\mathrm{AUROC}=0.916$ on Qwen2.5-VL and $0.873$ on LLaVA-NeXT, both
 above the internal-feature HALP baseline of $0.787$ \cite{halp}.
 Fig.~\ref{fig:teaser} gives the flavour at a glance.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig1_teaser.pdf}
 \caption{\textbf{Top:} phantom boxes that Qwen2.5-VL and LLaVA-NeXT
@@ -138,7 +150,7 @@ coordinates; \S\ref{sec:exp}) and clipped to $[0,W]\times[0,H]$ with
 minimum side $4$ px. Every generated token's greedy log-probability is
 logged.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig2_method.pdf}
 \caption{PhantomMap pipeline. For each $(I, o)$ pair in POPE, the VLM
@@ -185,7 +197,7 @@ $\sim$\,6 h. Qwen emits pixel coordinates; LLaVA emits normalised
 $[0,1]$ and grounds on only $19\%$ of its positive responses. The
 parser handles both formats with no model-specific code.
 
-\begin{table*}[t]
+\begin{table*}[!tb]
 \centering\small
 \setlength{\tabcolsep}{6pt}
 \begin{tabular}{llccccc}
@@ -216,7 +228,7 @@ Qwen; $0.189$ vs $0.239$ for LLaVA). Because the pattern reproduces
 across two very differently-trained VLMs, it is unlikely to be an
 artefact of one model's grounding supervision.
 
-\begin{figure*}[t]
+\begin{figure*}[!tb]
 \centering
 \includegraphics[width=0.72\textwidth]{figures/fig3_atlas.pdf}
 \caption{\textbf{Phantom atlas.} KDE of phantom-box centres vs
@@ -233,7 +245,7 @@ HALP's $0.787$. On Qwen the bbox geometry adds to the yes-token
 confidence ($0.899\!\to\!0.916$); on LLaVA, geometry and confidence
 overlap and are near-indistinguishable.
 
-\begin{table}[t]
+\begin{table}[!htbp]
 \centering\small
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{llccc}
@@ -251,7 +263,7 @@ and smaller in area than honest boxes, for both models.}
 \label{tab:atlas}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig4_roc.pdf}
 \caption{\textbf{Detector ROC.} Training-free logistic regression on
@@ -260,7 +272,7 @@ chance. Axes are false-positive and true-positive rates.}
 \label{fig:roc}
 \end{figure}
 
-\begin{table}[t]
+\begin{table}[!htbp]
 \centering\small
 \begin{tabular}{lcc}
 \toprule
@@ -287,7 +299,7 @@ adds little. Qualitatively, phantoms cluster into three patterns
 scene; peripheral boxes pressed to a corner; and edge-clipped boxes
 flush with an image border.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig5_failures.pdf}
 \caption{\textbf{Failure-mode taxonomy.} Top: phantoms covering most
