@@ -320,6 +320,8 @@ def main():
         run_one = lambda ip, pr: run_llava_one(model, processor, ip, pr)
         model_id = LLAVA_ID
 
+    missing_images = 0
+    processed = 0
     with open(args.out, "a", encoding="utf-8") as fout:
         for r in tqdm(records, desc=f"{args.model}-{args.split}"):
             key = f"{r['split']}::{r['image']}::{r['object']}"
@@ -327,8 +329,11 @@ def main():
                 continue
             img_path = resolve_image_path(args.data_dir, r["image"], r["split"])
             if not img_path.exists():
-                # Skip cleanly; we'll note this in the final report.
+                missing_images += 1
+                if missing_images <= 3:
+                    print(f"[skip] missing image: {img_path}", file=sys.stderr)
                 continue
+            processed += 1
             try:
                 img_w, img_h = Image.open(img_path).size
                 prompt = build_prompt(r["object"], with_bbox=True)
@@ -365,6 +370,17 @@ def main():
             )
             fout.write(json.dumps(asdict(rec)) + "\n")
             fout.flush()
+
+    # Be loud at the end: if the vast majority of records were skipped
+    # due to missing images, the downstream pipeline will silently
+    # produce empty results, so we raise here.
+    if processed == 0 and missing_images > 0:
+        raise SystemExit(
+            f"ERROR: all {missing_images} candidate records were skipped because "
+            f"images were not found under {args.data_dir}. "
+            f"Re-run: python src/download_data.py --out {args.data_dir}"
+        )
+    print(f"[done] processed={processed}  skipped(missing_image)={missing_images}")
 
 
 if __name__ == "__main__":

@@ -1,14 +1,24 @@
 """
-Download POPE (3 splits) + AMBER + the COCO val2014 image subset
-referenced by those benchmarks. Designed to be idempotent and to
-skip files that already exist on disk.
+Download POPE (3 splits) + the COCO val2014 images referenced by
+those splits. AMBER is intentionally NOT auto-downloaded here: its
+image hosting is unreliable and POPE alone (9000 records across 3
+splits) provides more than enough data for PhantomMap.
 
-Usage (run on Colab or locally):
-    python src/download_data.py --out data/
+Two COCO-image modes:
+  --coco-zip  (default): grab the official 6GB val2014.zip once and
+              extract just the JPEGs referenced by POPE. Robust on
+              Colab because it's a single large transfer.
+  --coco-per-image: fall back to one-HTTP-request-per-image from
+              images.cocodataset.org. Slower and more flaky on Colab,
+              but uses less disk if you only want a subset.
+
+Usage:
+    python src/download_data.py --out data
 """
 
 from __future__ import annotations
 import argparse
+import io
 import json
 import os
 import shutil
@@ -21,28 +31,21 @@ from tqdm import tqdm
 
 
 POPE_SPLITS = {
-    "pope_random": "https://raw.githubusercontent.com/RUCAIBox/POPE/main/output/coco/coco_pope_random.json",
-    "pope_popular": "https://raw.githubusercontent.com/RUCAIBox/POPE/main/output/coco/coco_pope_popular.json",
+    "pope_random":      "https://raw.githubusercontent.com/RUCAIBox/POPE/main/output/coco/coco_pope_random.json",
+    "pope_popular":     "https://raw.githubusercontent.com/RUCAIBox/POPE/main/output/coco/coco_pope_popular.json",
     "pope_adversarial": "https://raw.githubusercontent.com/RUCAIBox/POPE/main/output/coco/coco_pope_adversarial.json",
 }
 
-# AMBER's bench file plus the COCO image index.
-AMBER_QUERY_URL = (
-    "https://raw.githubusercontent.com/junyangwang0410/AMBER/main/data/query/query_discriminative.json"
-)
-
-# COCO val2014 images. We only fetch the images referenced by POPE/AMBER
-# because the full zip is 6GB. See _coco_image_url.
+COCO_VAL2014_ZIP = "http://images.cocodataset.org/zips/val2014.zip"
 COCO_VAL2014_BASE = "http://images.cocodataset.org/val2014"
 
 
 def _download(url: str, dest: Path, chunk: int = 1 << 15) -> None:
-    """Stream a URL to dest, skipping if the file already exists and is non-empty."""
     if dest.exists() and dest.stat().st_size > 0:
         return
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with requests.get(url, stream=True, timeout=60) as r:
+    with requests.get(url, stream=True, timeout=120) as r:
         r.raise_for_status()
         total = int(r.headers.get("content-length", 0))
         with open(tmp, "wb") as f, tqdm(
@@ -55,17 +58,14 @@ def _download(url: str, dest: Path, chunk: int = 1 << 15) -> None:
 
 
 def _coco_image_url(image_id: int) -> str:
-    """COCO val2014 files are named COCO_val2014_{image_id:012d}.jpg"""
     return f"{COCO_VAL2014_BASE}/COCO_val2014_{image_id:012d}.jpg"
 
 
 def download_pope(out_dir: Path) -> list[dict]:
-    """Download POPE jsonl for all 3 splits; return the combined records."""
     merged: list[dict] = []
     for split, url in POPE_SPLITS.items():
         dest = out_dir / "pope" / f"{split}.json"
         _download(url, dest)
-        # POPE file is JSON-lines despite the .json extension.
         with open(dest, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -78,77 +78,111 @@ def download_pope(out_dir: Path) -> list[dict]:
     return merged
 
 
-def download_amber(out_dir: Path) -> list[dict]:
-    """Download AMBER discriminative-task query file."""
-    dest = out_dir / "amber" / "query_discriminative.json"
-    _download(AMBER_QUERY_URL, dest)
-    with open(dest, encoding="utf-8") as f:
-        data = json.load(f)
-    # Attach a split name for bookkeeping.
-    for r in data:
-        r["split"] = "amber"
-    print(f"AMBER: {len(data)} records")
-    return data
+def _needed_image_names(records: list[dict]) -> set[str]:
+    """Collect the set of COCO_val2014_xxx.jpg basenames POPE references."""
+    names: set[str] = set()
+    for r in records:
+        n = str(r.get("image") or "").strip()
+        if n.startswith("COCO_val2014_") and n.endswith(".jpg"):
+            names.add(n)
+    return names
 
 
-def download_coco_images(records: list[dict], out_dir: Path) -> None:
-    """Download only the COCO val2014 images referenced by the given records.
-
-    Records are expected to carry an "image" or "image_id" field. POPE uses
-    "image": "COCO_val2014_000000xxx.jpg"; AMBER uses "image": "AMBER_x.jpg"
-    (a separate image set we skip here; user should also fetch the AMBER
-    image zip separately if running AMBER in full).
-    """
+def download_coco_zip(records: list[dict], out_dir: Path, keep_zip: bool = False) -> None:
+    """Download val2014.zip once, then extract only the JPEGs referenced
+    by POPE into data/coco_val2014/ (~ 3000 files, a few hundred MB)."""
+    needed = _needed_image_names(records)
     coco_dir = out_dir / "coco_val2014"
     coco_dir.mkdir(parents=True, exist_ok=True)
-
-    needed: set[int] = set()
-    for r in records:
-        name = r.get("image") or r.get("image_id") or ""
-        if isinstance(name, int):
-            needed.add(name)
-            continue
-        name = str(name)
-        if name.startswith("COCO_val2014_") and name.endswith(".jpg"):
-            try:
-                img_id = int(name.split("_")[-1].split(".")[0])
-                needed.add(img_id)
-            except ValueError:
+    # Short-circuit if everything is already extracted.
+    present = {p.name for p in coco_dir.glob("COCO_val2014_*.jpg")}
+    missing = needed - present
+    if not missing:
+        print(f"COCO val2014: already have all {len(needed)} referenced images")
+        return
+    print(
+        f"COCO val2014: {len(missing)} of {len(needed)} referenced images missing; "
+        f"downloading val2014.zip (~6 GB) to extract them."
+    )
+    zip_path = out_dir / "val2014.zip"
+    _download(COCO_VAL2014_ZIP, zip_path)
+    # Extract matching entries. zipfile is streaming so this doesn't
+    # load the whole archive into memory.
+    with zipfile.ZipFile(zip_path) as zf:
+        # The zip's internal path is "val2014/COCO_val2014_xxx.jpg".
+        for info in tqdm(zf.infolist(), desc="extract", unit="file"):
+            if not info.filename.endswith(".jpg"):
                 continue
+            basename = Path(info.filename).name
+            if basename not in missing:
+                continue
+            out_path = coco_dir / basename
+            if out_path.exists() and out_path.stat().st_size > 0:
+                continue
+            with zf.open(info) as src, open(out_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+    if not keep_zip:
+        zip_path.unlink(missing_ok=True)
+    final_present = {p.name for p in coco_dir.glob("COCO_val2014_*.jpg")}
+    still_missing = needed - final_present
+    print(
+        f"COCO val2014: extracted; present={len(final_present)}  "
+        f"still-missing={len(still_missing)}"
+    )
+    if still_missing:
+        print(
+            "WARNING: these references were not found in val2014.zip "
+            f"(first 5): {list(sorted(still_missing))[:5]}",
+            file=sys.stderr,
+        )
 
-    print(f"COCO val2014: fetching {len(needed)} unique images")
-    for img_id in tqdm(sorted(needed), desc="coco"):
-        dest = coco_dir / f"COCO_val2014_{img_id:012d}.jpg"
+
+def download_coco_per_image(records: list[dict], out_dir: Path) -> None:
+    """Fallback: one request per image. Slower on Colab."""
+    needed = _needed_image_names(records)
+    coco_dir = out_dir / "coco_val2014"
+    coco_dir.mkdir(parents=True, exist_ok=True)
+    present = {p.name for p in coco_dir.glob("COCO_val2014_*.jpg")}
+    missing = sorted(needed - present)
+    print(f"COCO val2014 (per-image): fetching {len(missing)} images")
+    for name in tqdm(missing, desc="coco"):
+        try:
+            img_id = int(name.split("_")[-1].split(".")[0])
+        except ValueError:
+            continue
+        dest = coco_dir / name
         try:
             _download(_coco_image_url(img_id), dest)
         except requests.HTTPError as e:
-            # A handful of images may have been removed upstream; skip.
-            print(f"  skip {img_id}: {e}", file=sys.stderr)
+            print(f"  skip {name}: {e}", file=sys.stderr)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="data", type=Path, help="output root dir")
+    ap.add_argument("--out", default="data", type=Path)
     ap.add_argument(
-        "--skip-coco", action="store_true", help="only fetch jsonl, skip images"
+        "--coco-mode",
+        choices=["zip", "per-image"],
+        default="zip",
+        help="how to fetch COCO val2014 images (default: bulk zip)",
+    )
+    ap.add_argument(
+        "--keep-zip", action="store_true", help="keep val2014.zip after extraction"
+    )
+    ap.add_argument(
+        "--skip-coco", action="store_true", help="only fetch POPE jsonl, no images"
     )
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
     pope = download_pope(args.out)
-    amber = download_amber(args.out)
 
-    if not args.skip_coco:
-        download_coco_images(pope, args.out)
-        # AMBER has its own image set; users should fetch the zip from the
-        # AMBER repo README and extract into data/amber/images.
-        amber_images = args.out / "amber" / "images"
-        if not amber_images.exists():
-            print(
-                "NOTE: AMBER images are not auto-downloaded. Please grab the "
-                "image zip from https://github.com/junyangwang0410/AMBER and "
-                f"extract into {amber_images}"
-            )
+    if args.skip_coco:
+        return
+    if args.coco_mode == "zip":
+        download_coco_zip(pope, args.out, keep_zip=args.keep_zip)
+    else:
+        download_coco_per_image(pope, args.out)
 
 
 if __name__ == "__main__":
