@@ -43,11 +43,12 @@
    angle: the \emph{first-party readout}. When a VLM hallucinates, we
    simply ask it -- through its public prompt interface -- to draw a
    bounding box around the phantom object, and then analyse the
-   resulting boxes at scale. Across 9{,}000 (image, object) probes on
-   the three POPE \cite{pope} splits, we collect $2{,}806$ phantom
-   bounding boxes from the two models and show that phantom boxes
-   consistently lie $18\%$--$32\%$ further from the image centre and
-   cover $36\%$--$55\%$ less area than boxes drawn for real objects.
+   resulting boxes at scale. Across $18{,}000$ (image, object) probes
+   spanning the three POPE \cite{pope} splits for both models
+   ($9{,}000$ per model), we collect $2{,}806$ phantom bounding boxes
+   and show that phantom boxes consistently lie $20\%$--$32\%$ further
+   from the image centre and cover $21\%$--$37\%$ less area than boxes
+   drawn for real objects.
    A simple shape-and-logit feature set over the phantom box, trained
    with logistic regression, yields a \emph{training-free}
    hallucination detector that reaches $\mathrm{AUROC}=0.916$ on
