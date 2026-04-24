@@ -35,10 +35,11 @@ MODEL_SHORT = {
 def kde_grid(cx: np.ndarray, cy: np.ndarray, n: int = 200) -> np.ndarray:
     """Evaluate a 2D Gaussian KDE on the unit square.
 
-    Falls back to a smoothed 2D histogram when the data is rank-deficient
-    (VLMs often emit quantised bbox coordinates that land in a near-singular
-    covariance). Adds a tiny isotropic noise to break symmetry so KDE
-    succeeds on borderline cases.
+    Uses an adaptive bandwidth that grows when the sample is small, so a
+    low-n panel (e.g. LLaVA phantoms, n=71) produces a smooth continuous
+    density rather than a discrete bump pattern. Falls back to a
+    smoothed 2D histogram when the data covariance is rank-deficient
+    (which happens when VLMs emit quantised bbox coordinates).
     """
     if len(cx) < 3:
         return np.zeros((n, n), dtype=np.float32)
@@ -51,11 +52,18 @@ def kde_grid(cx: np.ndarray, cy: np.ndarray, n: int = 200) -> np.ndarray:
     ys = np.linspace(0, 1, n)
     X, Y = np.meshgrid(xs, ys)
     grid_pts = np.stack([X.ravel(), Y.ravel()])
+    # Larger bandwidth for small samples so we display the population
+    # structure rather than individual bumps.
+    if len(cx) < 100:
+        bw = 0.30
+    elif len(cx) < 300:
+        bw = 0.22
+    else:
+        bw = 0.15
     try:
-        kde = gaussian_kde(pts, bw_method=0.15)
+        kde = gaussian_kde(pts, bw_method=bw)
         Z = kde(grid_pts).reshape(n, n)
     except np.linalg.LinAlgError:
-        # Fallback: 2D histogram smoothed with a tight Gaussian.
         from scipy.ndimage import gaussian_filter
         H, _, _ = np.histogram2d(cx_j, cy_j, bins=n, range=[[0, 1], [0, 1]])
         Z = gaussian_filter(H.T, sigma=max(1.0, n * 0.02))

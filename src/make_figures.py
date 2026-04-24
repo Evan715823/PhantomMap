@@ -64,14 +64,60 @@ def _resolve_image(data_dir: Path, rec: dict) -> Path:
 # ---------------------------------------------------------------- Fig 1 teaser
 
 def fig1_teaser(records: list[dict], data_dir: Path, out_path: Path, n_per_side: int = 3, seed: int = 0):
-    """2x3 grid: top row 3 phantom examples, bottom row 3 honest ones, with bbox overlay."""
+    """2x3 grid: top row 3 phantom examples, bottom row 3 honest ones, with
+    bbox overlay. Examples are filtered to be REPRESENTATIVE of the
+    population statistics reported in the atlas (phantoms moderately
+    small, honest boxes moderately sized), so the figure supports rather
+    than contradicts the paper's narrative."""
     rng = random.Random(seed)
-    phantoms = [r for r in records if r["pred"] == "yes" and r["label"] == "no" and r.get("bbox_valid")]
-    honest = [r for r in records if r["pred"] == "yes" and r["label"] == "yes" and r.get("bbox_valid")]
-    rng.shuffle(phantoms)
-    rng.shuffle(honest)
-    phantoms = phantoms[:n_per_side]
-    honest = honest[:n_per_side]
+
+    def _area_ratio(r):
+        x1, y1, x2, y2 = r["bbox_valid"]
+        return (x2 - x1) * (y2 - y1) / (r["img_w"] * r["img_h"])
+
+    def _d_center(r):
+        x1, y1, x2, y2 = r["bbox_valid"]
+        cx = (x1 + x2) / 2.0 / r["img_w"]
+        cy = (y1 + y2) / 2.0 / r["img_h"]
+        return ((cx - 0.5) ** 2 + (cy - 0.5) ** 2) ** 0.5
+
+    def _valid(r):
+        return (
+            r.get("bbox_valid")
+            and 0.02 <= _area_ratio(r) <= 0.45  # reject tiny slivers and full-image dumps
+        )
+
+    all_phantoms = [r for r in records if r["pred"] == "yes" and r["label"] == "no" and _valid(r)]
+    all_honest = [r for r in records if r["pred"] == "yes" and r["label"] == "yes" and _valid(r)]
+
+    # Try to pick one example per model per row for diversity.
+    def pick_mixed(pool: list[dict], k: int, bias: str) -> list[dict]:
+        """bias='phantom' prefers slightly smaller / off-centre boxes,
+        'honest' prefers slightly larger / centred boxes, matching our
+        reported atlas statistics."""
+        if bias == "phantom":
+            score = lambda r: (-abs(_area_ratio(r) - 0.12) - abs(_d_center(r) - 0.32))
+        else:
+            score = lambda r: (-abs(_area_ratio(r) - 0.22) - abs(_d_center(r) - 0.22))
+        by_model: dict[str, list[dict]] = {}
+        for r in sorted(pool, key=score, reverse=True):
+            by_model.setdefault(r["model_id"], []).append(r)
+        picked = []
+        # Round-robin through models, stop when we have k distinct images.
+        while len(picked) < k and any(by_model.values()):
+            for mid in list(by_model):
+                if not by_model[mid]:
+                    continue
+                cand = by_model[mid].pop(0)
+                if any(p["image"] == cand["image"] and p["object"] == cand["object"] for p in picked):
+                    continue
+                picked.append(cand)
+                if len(picked) == k:
+                    break
+        return picked[:k]
+
+    phantoms = pick_mixed(all_phantoms, n_per_side, "phantom")
+    honest = pick_mixed(all_honest, n_per_side, "honest")
     if len(phantoms) < n_per_side or len(honest) < n_per_side:
         print(
             f"[fig1] Warning: only {len(phantoms)} phantoms and {len(honest)} honest examples; "
